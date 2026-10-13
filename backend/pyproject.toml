@@ -33,3 +33,5 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Lets tests import shared helpers (`from tests.conftest import ...`) under plain `pytest` too.
+pythonpath = ["."]
