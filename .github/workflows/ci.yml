@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -e ".[dev]"
+      - run: pytest -v
+
+  worker:
+    name: Worker tests (incl. real Docker sandbox)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      # The backend is installed too, for the worker/backend schema compatibility test.
+      - run: pip install -e ".[dev]" -e ../backend
+      - run: pytest -v
+        env:
+          SECRET_KEY: ci-only-secret-key-not-used-for-anything-real
+
+  frontend:
+    name: Frontend tests & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  docker-build:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: ci
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose build

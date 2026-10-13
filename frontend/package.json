@@ -1,0 +1,35 @@
+{
+  "name": "codeflow-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "axios": "^1.4.0",
+    "lucide-react": "1.45.0",
+    "monaco-editor": "^0.39.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.14.2",
+    "tailwindcss": "^3.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.0.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.40",
+    "typescript": "^5.1.6",
+    "vite": "^5.0.0",
+    "vitest": "^1.4.8"
+  },
+  "type": "module"
+}

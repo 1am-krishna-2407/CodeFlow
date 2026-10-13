@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens. Values are RGB triplets so Tailwind can apply opacity (e.g. bg-success/10).
+ * Light is the base; dark overrides it via data-theme on <html>, set before first paint in index.html.
+ * Light-mode primary/success/danger are darkened from the brief's starting values to reach WCAG AA (>=4.5:1).
+ */
+:root {
+  --canvas: 246 247 249;
+  --surface: 255 255 255;
+  --raised: 240 242 245;
+  --editor: 251 251 252;
+  --line: 221 226 234;
+  --fg: 17 24 39;
+  --muted: 91 100 117;
+  --primary: 11 127 101;
+  --primary-hover: 9 106 84;
+  --on-primary: 255 255 255;
+  --accent: 79 107 237;
+  --success: 4 120 87;
+  --danger: 185 28 28;
+  --warning: 180 83 9;
+  --info: 37 99 235;
+  --running: 124 58 237;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --canvas: 11 15 23;
+  --surface: 17 23 35;
+  --raised: 23 32 49;
+  --editor: 13 18 32;
+  --line: 35 48 71;
+  --fg: 230 235 242;
+  --muted: 139 151 171;
+  --primary: 45 212 167;
+  --primary-hover: 94 234 193;
+  --on-primary: 4 19 14;
+  --accent: 124 156 255;
+  --success: 52 211 153;
+  --danger: 248 113 113;
+  --warning: 251 191 36;
+  --info: 96 165 250;
+  --running: 167 139 250;
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-canvas font-sans text-[14px] text-fg antialiased;
+  }
+  /* No ligatures in code or output: compiler messages must match the source character for character. */
+  code,
+  kbd,
+  pre,
+  .font-mono {
+    font-variant-ligatures: none;
+  }
+  ::selection {
+    background: rgb(var(--accent) / 0.3);
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--primary));
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--line)) transparent;
+  }
+}
+
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+@keyframes flash-in {
+  from {
+    background-color: rgb(var(--primary) / 0.08);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.animate-indeterminate {
+  animation: indeterminate 1.2s ease-in-out infinite;
+}
+
+.animate-flash {
+  animation: flash-in 0.6s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

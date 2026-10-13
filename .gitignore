@@ -1,0 +1,23 @@
+venv/
+__pycache__/
+node_modules/
+.env
+.env.local
+dist/
+.DS_Store
+/.idea/
+/.vscode/
+*.pyc
+*.pyo
+*.pyd
+/.pytest_cache/
+/.venv/
+coverage/
+uploads/
+docker-compose.override.yml
+# SQLite database files — never commit data files
+*.db
+*.sqlite
+*.sqlite3.venv/
+.pytest_cache/
+*.egg-info/

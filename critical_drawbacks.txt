@@ -1,0 +1,92 @@
+==============================================================================
+CODEFLOW — DRAWBACKS REPORT: RESOLUTION STATUS
+Original report: 2026-08-11   Resolved: 2026-10-13
+Verified by: backend 43 tests, worker 29 tests (8 against a real Docker daemon),
+frontend 13 tests, and a full `docker compose up` run: Python/Java/C++ jobs
+with stdin, timeout kill, and worker-crash recovery through nginx.
+==============================================================================
+
+BUILD / DEPLOYMENT
+  BLD-1  rq dependency breaks worker build ........ FIXED  rq removed; PEP 621 packaging, plain pip works
+  BLD-2  obsolete compose `version` key ........... FIXED
+  BLD-3  worker runs as root ...................... FIXED  uid 10002; reaches Docker via TCP proxy, no socket
+  BLD-4  API runs as root ......................... FIXED  uid 10001
+  BLD-5  --reload in compose ...................... FIXED  production uvicorn, 2 workers, healthcheck
+
+SECURITY
+  SEC-1  hardcoded SECRET_KEY ..................... FIXED  required, >=32 chars, known weak values rejected
+  SEC-2  committed DB credentials ................. FIXED  POSTGRES_PASSWORD required from .env; DB/Redis bound to 127.0.0.1
+  SEC-3  subprocess fallback (no sandbox) ......... FIXED  removed; Docker-only, job fails if unavailable
+  SEC-4  Docker socket in worker .................. MITIGATED  docker-socket-proxy (containers+images only,
+                                                    internal network). Full isolation needs gVisor/Kata
+                                                    or a dedicated VM: see README "Security notes".
+  SEC-5  no auth rate limiting .................... FIXED  register 5/min, login 10/min, jobs 20/min,
+                                                    Redis-backed so limits hold across API processes
+  SEC-6  unbounded source size .................... FIXED  64 KB cap on *encoded bytes* (source and stdin)
+  SEC-7  token lifetime / rotation ................ FIXED  30-min access + 7-day refresh tokens, typed
+                                                    (a refresh token can't be used as an access token),
+                                                    server-side revocation via /auth/logout
+  SEC-8  CORS not configurable .................... FIXED  JSON or CSV env value; UI served same-origin via nginx
+
+ARCHITECTURE
+  ARCH-1 session per service method ............... FIXED  one session per request via Depends(get_db)
+  ARCH-2 busy-wait polling ........................ FIXED  blocking BLMOVE
+  ARCH-3 create_all, no migrations ................ FIXED  Alembic (0001, 0002) run by a one-shot `migrate`
+                                                    service; a test asserts migrations == models
+  ARCH-4 worker imports backend code .............. FIXED  worker has its own minimal table definitions;
+                                                    a test checks compatibility with backend models
+  ARCH-5 no worker concurrency .................... FIXED  WORKER_CONCURRENCY thread pool; also `--scale worker=N`
+  ARCH-6 lifespan via private attribute ........... FIXED
+  ARCH-7 dead rq dependency ....................... FIXED
+
+RUNTIME
+  RUN-1  API offline .............................. FIXED  full stack starts and passes readiness checks
+  RUN-2  misleading auth error messages ........... FIXED  network / 401 / 409 / 422 / 429 / 5xx each worded separately
+  RUN-3  Vite CJS warning ......................... FIXED  ESM configs
+  RUN-4  1-second fixed polling ................... FIXED  backoff 500 ms -> 5 s; transient errors retried
+  RUN-5  status case mismatch ..................... FIXED  typed statuses end to end
+  RUN-6  committed SQLite file .................... FIXED  backend.db deleted; *.db ignored
+
+CODE QUALITY
+  CQ-1   free-form language ....................... FIXED  Literal["python","java","cpp"]
+  CQ-2   job left in `running` on error ........... FIXED  always finalised; crashed workers' jobs are
+                                                    requeued; stale running jobs reaped
+  CQ-3   validation errors become 500 ............. FIXED  422 with inputs stripped (no password echo)
+  CQ-4   deprecated utcnow ........................ FIXED  timezone-aware everywhere
+  CQ-5   unbounded page size ...................... FIXED  limit <= 100, server-side filters, total count
+  CQ-6   4 COUNT queries .......................... FIXED  single aggregate query
+  CQ-7   temp dirs on worker host ................. FIXED  no bind mounts at all; code goes in via env vars
+                                                    into a size-capped tmpfs
+
+MISSING FEATURES
+  GAP-1  refresh tokens ........................... DONE   with silent refresh in the UI
+  GAP-2  admin role enforcement ................... DONE   GET /users, PATCH /users/{id}/role, `python -m app.cli promote`
+  GAP-3  compose healthchecks ..................... DONE
+  GAP-4  output size limit ........................ DONE   64 KB per stream + daemon log cap; NUL bytes sanitised
+  GAP-5  real-time status (SSE/WebSocket) ......... NOT DONE (deliberate)  backoff polling is sufficient at
+                                                    this scale; revisit if job volume grows
+  GAP-6  sandbox images not pre-pulled ............ DONE   worker pre-pulls on start, pulls on demand otherwise
+
+ISSUES FOUND DURING THE FIX (not in the original report)
+  - SQLAlchemy 2.1 maps postgresql:// to psycopg v3; the project shipped psycopg2 -> crash on import
+  - stale pins (fastapi 0.100) broke the test client; the old tests could not run
+  - 422 responses echoed submitted passwords back to the client
+  - jobs could be attached to another user's project (IDOR)
+  - malformed UUIDs in paths returned 500
+  - GET /users/me always failed (UUID vs str schema)
+  - app subpackages lacked __init__.py and were dropped from installed builds
+  - job detail page crashed for jobs without a result yet
+  - program output containing NUL made the result unsaveable in Postgres
+  - sandbox had no pid limit, ran as root, had a writable rootfs and unbounded swap
+  - a killed worker leaked its in-flight sandbox container (now cleaned up on recovery)
+  - HOST_WORKER_TMP=${PWD} mapping did not work on Windows
+  - (introduced and caught during final testing) periodic recovery treated the worker's own
+    in-flight jobs as orphaned, killing running sandboxes every 60 s. Fixed, regression-tested,
+    and verified by an 80-second Java/C++ soak test (18/18 correct).
+  - "Run time" included container start-up and compilation, and the 0.5-CPU cap doubled compile
+    time: a Java hello world showed ~2 s. Compile and program time are now measured separately
+    inside the sandbox (migration 0003), and the default is 1 CPU. Java now shows ~0.6 s compile +
+    ~0.1 s run, and submit-to-result is 0.5 s (Python) to 1.2 s (Java).
+  - Direct API port bound to IPv4 loopback only: on Windows "localhost" tries ::1 first, adding
+    ~2 s to every new connection. Now bound on both 127.0.0.1 and ::1 (UI port was unaffected).
+==============================================================================

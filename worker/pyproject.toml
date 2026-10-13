@@ -1,0 +1,29 @@
+[project]
+name = "codeflow-worker"
+version = "0.2.0"
+description = "CodeFlow execution worker: pulls jobs from Redis and runs them in sandboxed containers"
+requires-python = ">=3.11"
+dependencies = [
+    "redis>=5.0",
+    "docker>=7.1",
+    "sqlalchemy>=2.0,<2.2",
+    "psycopg[binary]>=3.1",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "fakeredis>=2.20",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["worker*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["docker: needs a running Docker daemon (skipped otherwise)"]

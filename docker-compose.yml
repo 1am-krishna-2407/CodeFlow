@@ -1,0 +1,117 @@
+# Usage: cp .env.example .env  (set SECRET_KEY and POSTGRES_PASSWORD), then `docker compose up --build`.
+# App: http://localhost:5173   API docs: http://localhost:5173/api/v1/docs
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/codeflow
+  REDIS_URL: redis://redis:6379/0
+
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: codeflow
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5434:5432"   # host access for debugging only, never exposed beyond localhost
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d codeflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]   # queued jobs survive a Redis restart
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:6381:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build: ./backend
+    command: ["alembic", "upgrade", "head"]
+    env_file: .env
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      <<: *backend-env
+      RATE_LIMIT_STORAGE_URI: redis://redis:6379/1   # shared across API processes
+    ports:
+      # Direct API access, loopback only. Both IPv4 and IPv6 are bound: on Windows "localhost" tries ::1
+      # first, and binding only 127.0.0.1 adds a ~2 s fallback delay to every new connection.
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+      - "[::1]:${API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # The only component with Docker socket access. It exposes just the container and image
+  # endpoints the worker needs (no exec, volumes, networks, swarm, ...) on an internal network.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:v0.4.2
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      POST: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      ALLOW_RESTARTS: 1   # needed for /kill on timeout
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
+
+  worker:
+    build: ./worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      <<: *backend-env
+      DOCKER_HOST: tcp://docker-proxy:2375
+    stop_grace_period: 45s   # let in-flight jobs finish on shutdown
+    networks:
+      - default
+      - docker-api
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      docker-proxy:
+        condition: service_started
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+networks:
+  docker-api:
+    internal: true
+
+volumes:
+  db-data:
+  redis-data:
